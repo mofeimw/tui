@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+
+# recalculates window size and redraws
+refresh() {
+    read -r LINES COLUMNS < <(stty size)
+
+    ((CENTER = COLUMNS / 2))
+    ((QUARTER = COLUMNS / 4))
+
+    draw
+}
+
+# clears screen and renders each element
+draw() {
+    # escape code to clear screen
+    printf '\033[2J\033[H\033[?25l'
+
+    # loop through elements and parse if tags are present
+    for element in "${elements[@]}"; do
+        re='^<(.+)>(.+)</.+>$'
+        if [[ "$element" =~ $re ]]; then
+            tag="${BASH_REMATCH[1]}"
+            content="${BASH_REMATCH[2]}"
+
+            element=$($tag "$content")
+        fi
+        echo "$element"
+    done
+}
+
+# adds element to dom and redraws
+add() {
+    elements+=("$1")
+    draw
+}
+
+# <center>
+center() {
+    out=""
+    ((z = CENTER - ${#1} / 2))
+    for ((i=0; i<z; i++)); { out+=" "; }
+    out+="$1"
+    for ((i=0; i<z; i++)); { out+=" "; }
+    echo "$out"
+}
+
+# <br>
+br() {
+    for ((i=0; i<$1; i++)); { echo " "; }
+}
+
+# what do do with each keystroke
+keystroke() {
+    # deal with escape codes
+    [ -n $escape ] && {
+        case $key in
+            A)
+                on_up
+            ;;
+
+            B)
+                on_down
+            ;;
+
+            D)
+                on_left
+            ;;
+
+            C) 
+                on_right
+            ;;
+        esac
+
+        unset escape
+    }
+
+    # set flag because escape keys send two seperate triggers
+    [ $key == "[" ] && escape=true
+
+    # deal with regular keys
+    case $key in
+        " ")
+            on_space
+        ;;
+
+        "")
+            on_enter
+        ;;
+
+        q)
+            exit 0
+        ;;
+    esac
+}
+
+# event handlers
+on_up() { add "up"; }
+on_down() { add "down"; }
+on_left() { add "left"; }
+on_right() { add "right"; }
+
+on_space() { add "space"; }
+on_enter() { add "enter"; }
+
+main() {
+    # fresh start
+    refresh
+
+    # hide input and read keys one at a time
+    stty -icanon -echo
+
+    # catch window resizes and exits
+    trap 'refresh' WINCH
+    trap "stty icanon echo; printf '\033[?25h\033[2J\033[H'" EXIT INT
+
+    # set up "dom"
+    elements=()
+
+    # add basic welcome
+    add "$(br 2)"
+    add "<center> tui program </center>"
+    add "$(br 2)"
+
+    # forever loop reading keys
+    while key=$(dd ibs=1 count=1 2>/dev/null); do
+        keystroke
+        draw
+    done
+}
+
+main "$@"
