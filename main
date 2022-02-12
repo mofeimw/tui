@@ -1,30 +1,7 @@
 #!/usr/bin/env bash
 
-# recalculate window size and redraw
-refresh() {
-    # get dimensions
-    read -r LINES COLUMNS < <(stty size)
-
-    # set global variable for the center of the page
-    ((CENTER = COLUMNS / 2))
-
-    # create empty array to add elements to render
-    elements=()
-
-    # set cursor to first index
-    cursor=0
-    
-    # construct home page
-    br
-    h1 "tui program"
-    br
-
-    # draw to terminal
-    draw
-}
-
 # clear screen and render each element
-draw() {
+render() {
     # escape code to clear screen
     printf '\033[2J\033[H\033[?25l'
 
@@ -35,13 +12,53 @@ draw() {
 
     # loop through <select>
     for option in "${selectable[@]}"; do
-        # test if the option has been selected by user, and print color codes accordingly
+        # test if the option has been selected by user
         if [[ "${selected[@]}" =~ "${option}" ]]; then
-            printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
+            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[42m\033[30m%s\033[m\n' "- $option" || printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
         else
             [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[32m%s\033[m\n' "- $option" || printf '\033[1m\033[34m%s\033[m\n' "$option"
         fi
     done
+
+    # render submit button based on state
+    [ "${submit[0]}" == visible ] && {
+        for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
+        printf '\033[1m\033[46m\033[30mdone\033[m\n'
+    }
+
+    [ "${submit[0]}" == selected ] && {
+        for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
+        printf '\033[1m\033[45m\033[30mdone\033[m\n'
+    }
+}
+
+# recalculate window size and rerender
+refresh() {
+    # get dimensions
+    read -r LINES COLUMNS < <(stty size)
+
+    # set global variable for the center of the page
+    ((CENTER = COLUMNS / 2))
+
+    # reset elements
+    elements=()
+
+    # top banner
+    br
+    h1 "tui program"
+    br
+
+    # render to terminal
+    render
+}
+
+# hard reset
+hard_reset() {
+    selectable=()
+    selected=()
+    submit=""
+
+    refresh
 }
 
 # <h1>
@@ -55,9 +72,9 @@ h1() {
     out+="$1"
     for ((i=0; i<z; i++)); { out+=" "; }
 
-    # add to elements and draw
+    # add to elements and render
     elements+=$(printf '\033[1m\033[44m\033[30m%s\033[m' "$out")
-    draw
+    render
 }
 
 # <p>
@@ -65,14 +82,14 @@ p() {
     # adds bold blue <p> and fills the rest of the line with blank space
     elements+=$(printf '\033[1m\033[34m%s\033[m' "$1")
     elements+=$(for ((i=0; i<$COLUMNS-${#1}; i++)); { echo -n " "; })
-    draw
+    render
 }
 
 # <br>
 br() {
     # writes a full line of blank space
     elements+=$(for ((i=0; i<$COLUMNS; i++)); { echo -n " "; })
-    draw
+    render
 }
 
 # <select>
@@ -81,26 +98,83 @@ choice() {
     for option in "$@"; do
         selectable+=("$option")
     done
+    render
+}
+
+# file browser functionality
+browser() {
+    for file in "${data[@]}"; do
+        [ ! -f "$file" ] && {
+            hard_reset
+            p "file not found!"
+        }
+    done
+}
+
+# submit button
+submit() {
+    # make sure there is at least one selection
+    [ ${#selected[@]} -eq 0 ] && return 1
+
+    # grab submitted form data
+    data=("${selected[@]}") 
     
-    # (re)draw
-    draw
+    hard_reset
+
+    # what to do with data, depending on api
+    [ ${submit[1]} == opt ] && { 
+        for option in "${data[@]}"; do
+            $option
+        done
+    }
+
+    [ ${submit[1]} == fs ] && browser
 }
 
 # event handlers
 # adjusts the cursor position and adjusts snapback to prevent array index out of bounds
-up() { ((cursor--)); [ $cursor -eq -1 ] && ((cursor = ${#selectable[@]} - 1)); draw; }
-down() { ((cursor++)); [ $cursor -eq ${#selectable[@]} ] && cursor=0; draw; }
+up() {
+    ((cursor--))
+    curse
+}
+
+down() {
+    ((cursor++))
+    curse
+}
+
+# cursor logic
+curse() {
+    # move selection away from submit button if it was already selected
+    [ ${submit[0]} == selected ] && {
+        cursor=0
+        submit[0]=visible
+    }
+
+    # submit button state
+    [ ${submit[0]} == visible ] && {
+        [ $cursor -eq ${#selectable[@]} ] && submit[0]=selected
+    } || {
+        [ $cursor -eq ${#selectable[@]} ] && cursor=0
+    }
+    [ $cursor -eq -1 ] && ((cursor = ${#selectable[@]} - 1))
+
+    render
+}
 
 # idk what to do with these yet
-left() { p "left"; }
-right() { p "right"; }
+left() { :; }
+right() { :; }
 
 # "click" event handler
 click() {
+    # call submit() to send data
+    [ ${submit[0]} == selected ] && { submit; return 0; }
+
     # if no other selections have been made add the selected into the array
     [ ${#selected[@]} -eq 0 ] && {
-        selected+=("${selectable[$cursor]}")
-        draw
+        selected=("${selectable[$cursor]}")
+        render
         return 0
     }
 
@@ -108,22 +182,23 @@ click() {
     for item in "${selected[@]}"; do
         # deselect item if it was already within the selected array
         [ "${selectable[$cursor]}" == "$item" ] && {
-            # create new array and repopulate without the deselected option - this is to avoid leaving a gap in the indices
+            # create new array and repopulate without the deselected option - to avoid leaving a gap in the indices
             new=()
 
             for value in "${selected[@]}"; do
-                [[ "$value" != "$item" ]] && new+=($value)
+                [ ! "$value" == "$item" ] && new+=($value)
             done
 
             selected=("${new[@]}")
             unset new
 
-        # add selection if it was previously unselected
-        } || selected+=("${selectable[$cursor]}")
+            render
+            return 0
+        }
     done
 
-    # (re)draw
-    draw
+    selected+=("${selectable[$cursor]}")
+    render
 }
 
 # map keys
@@ -182,7 +257,24 @@ keystroke() {
     esac
 }
 
-# main function
+# --- filler logic functions - replace with the options in your <select> ---
+one() {
+    p "one!"
+}
+
+two() {
+    p "two!!"
+}
+
+three() {
+    p "three!!!"
+}
+
+four() {
+    p "four!!!!"
+}
+
+# main() function
 main() {
     # hide input and read keys one at a time
     stty -icanon -echo
@@ -193,18 +285,23 @@ main() {
 
     # set up "dom"
     elements=()
-
-    # add arrays for <select>s
     selectable=()
     selected=()
+    cursor=0
 
     # fresh start
     refresh
 
-    # render some more elements
+    # add some elements
     p "hola"
     br
+
     choice "one" "two" "three" "four"
+
+    submit=(visible opt)
+
+    # render!
+    render
 
     # forever loop reading keys
     while key=$(dd ibs=1 count=1 2>/dev/null); do
