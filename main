@@ -45,6 +45,12 @@ refresh() {
     h1 "tui program"
     br
 
+    # display top message, if available
+    for msg in "${msgs[@]}"; do
+        p "$msg"
+    done
+    [ ${#msgs} -ne 0 ] && br
+
     # render to terminal
     render
 }
@@ -54,6 +60,12 @@ hard_reset() {
     selectable=()
     selected=()
     submit=""
+    msgs=()
+
+    # repopulate messages if arguments were passed
+    for arg in "$@"; do
+        msgs+=("$arg")
+    done
 
     refresh
 }
@@ -119,8 +131,6 @@ submit() {
     # grab submitted form data
     data=("${selected[@]}") 
     
-    hard_reset
-
     # what to do with data, depending on api
     [ ${submit[1]} == opt ] && { 
         for option in "${data[@]}"; do
@@ -259,18 +269,22 @@ keystroke() {
 
 # --- filler logic functions - replace with the options in your <select> ---
 one() {
+    hard_reset "submitted!"
     p "one!"
 }
 
 two() {
+    hard_reset "submitted!"
     p "two!!"
 }
 
 three() {
+    hard_reset "submitted!"
     p "three!!!"
 }
 
 four() {
+    hard_reset "submitted!"
     p "four!!!!"
 }
 
@@ -289,13 +303,13 @@ main() {
     selected=()
     cursor=0
 
+    # set greeting
+    msgs=("hola!")
+
     # fresh start
     refresh
 
     # add some elements
-    p "hola"
-    br
-
     choice "one" "two" "three" "four"
 
     submit=(visible opt)
