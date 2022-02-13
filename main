@@ -8,31 +8,26 @@ render() {
     # render header
     header "tui program"
     
-    # render status messages if necessary
-    [ ${#msgs} -ne 0 ] && message
-
-    # loop through body elements and write to print
-    for element in "${body[@]}"; do
-        echo -e "$element"
-    done
+    # render body content
+    [ ${#body} -ne 0 ] && body
 
     # loop through <select>able elements and print
     for option in "${selectable[@]}"; do
         # test if the option has been selected by user
         if [[ "${selected[@]}" =~ "${option}" ]]; then
-            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[45m\033[30m%s\033[m\n' "- $option" || printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
+            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[45m\033[30m%s\033[m\n' "> $option" || printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
         else
-            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[32m%s\033[m\n' "- $option" || printf '\033[1m\033[34m%s\033[m\n' "$option"
+            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[32m%s\033[m\n' "> $option" || printf '\033[1m\033[34m%s\033[m\n' "$option"
         fi
     done
 
     # render submit button based on state
-    [ "${submit[0]}" == visible ] && {
+    [ "$submit" == visible ] && {
         for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
         printf '\033[1m\033[46m\033[30mdone\033[m\n'
     }
 
-    [ "${submit[0]}" == selected ] && {
+    [ "$submit" == selected ] && {
         for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
         printf '\033[1m\033[45m\033[30mdone\033[m\n'
     }
@@ -48,9 +43,10 @@ refresh() {
 }
 
 # hard reset
-hard_reset() {
+reset() {
     selectable=()
     selected=()
+    body=()
     submit=""
 
     refresh
@@ -76,28 +72,13 @@ header() {
     for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
 }
 
-# print status message(s)
-message() {
-    for msg in "${msgs[@]}"; do
-        printf '\033[1m\033[34m%s\033[m' "$msg"
-        for ((i=0; i<$COLUMNS-${#msg}; i++)); { echo -n " "; }
+# render all in <body>
+body() {
+    for p in "${body[@]}"; do
+        printf '\033[1m\033[34m%s\033[m' "$p"
+        for ((i=0; i<$COLUMNS-${#p}; i++)); { echo -n " "; }
     done
     for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
-}
-
-# add <p> to <body>
-p() {
-    # adds bold blue <p> and fills the rest of the line with blank space
-    body+=$(printf '\033[1m\033[34m%s\033[m' "$1")
-    body+=$(for ((i=0; i<$COLUMNS-${#1}; i++)); { echo -n " "; })
-    render
-}
-
-# add <br> to body
-br() {
-    # writes a full line of blank space
-    body+=$(for ((i=0; i<$COLUMNS; i++)); { echo -n " "; })
-    render
 }
 
 # construct a <select>
@@ -109,79 +90,89 @@ choice() {
     render
 }
 
-# file browser functionality
+# file browser
 browser() {
-    for file in "${data[@]}"; do
-        [ ! -f "$file" ] && {
-            hard_reset
-            p "file not found!"
+    # init/reset variables
+    args=""
+    cursor=0
+
+    # construct a <select> with all the files in the current directory
+    for file in *; do
+        args+="$file "
+    done
+    choice $args
+
+    # set the type to filesystem mode
+    submit=fs
+}
+
+# allow chainable function calls
+next() {
+    # set the next function
+    next=${flow[1]}
+
+    # remove the first (current) index in queue
+    for f in "${flow[@]}"; do
+        [ "${flow[0]}" == "$f" ] && {
+            new=()
+            for y in "${flow[@]}"; do
+                [ ! "$y" == "${flow[0]}" ] && new+=("$y")
+            done
+            flow=("${new[@]}")
+            unset new
+            break
         }
     done
+
+    $next
 }
+
+# add to up next queue
+queue() { flow=("${flow[@]:0:1}" "$1" "${flow[@]:1}"); }
 
 # submit button
 submit() {
+    # on_submit handler in file browser mode
+    [ "$submit" == fs ] && {
+        # reset and forward to next function in queue
+        reset
+        next
+        return 0
+    }
+
+    # on submit handler when <select> was not in file browser mode
+    # flow order
+    order=("one" "two" "three" "four")
+
     # make sure there is at least one selection
     [ ${#selected[@]} -eq 0 ] && return 1
 
     # grab submitted form data
     data=("${selected[@]}") 
-
-    # change message
-    msgs=("submitted!")
     
-    hard_reset
+    reset
 
-    # route flow depending on api
-    [ ${submit[1]} == opt ] && { 
-        for option in "${data[@]}"; do
-            $option
-        done
-    }
+    # reorganizes selection and adds to queue in the correct order
+    for ((i=0; i<=${#order[@]}; i++)); do
+        if [[ " ${data[*]} " =~ " ${order[$i]} " ]]; then
+            flow+=("${order[$i]}")
+        fi
+    done
 
-    [ ${submit[1]} == fs ] && browser
+    next
 }
-
-# event handlers
-# adjusts the cursor position and adjusts snapback to prevent array index out of bounds
-up() {
-    ((cursor--))
-    curse
-}
-
-down() {
-    ((cursor++))
-    curse
-}
-
-# cursor logic
-curse() {
-    # move selection away from submit button if it was already selected
-    [ ${submit[0]} == selected ] && {
-        cursor=0
-        submit[0]=visible
-    }
-
-    # submit button state
-    [ ${submit[0]} == visible ] && {
-        [ $cursor -eq ${#selectable[@]} ] && submit[0]=selected
-    } || {
-        [ $cursor -eq ${#selectable[@]} ] && cursor=0
-    }
-    [ $cursor -eq -1 ] && ((cursor = ${#selectable[@]} - 1))
-
-    render
-}
-
-# idk what to do with these yet
-left() { :; }
-right() { :; }
 
 # "click" event handler
 click() {
     # call submit() to send data
-    [ ${submit[0]} == selected ] && { submit; return 0; }
+    [ "$submit" == selected ] && { submit; return 0; }
 
+    # in file browser mode immediately submit after one selection, saving the selected file
+    [ "$submit" == fs ] && {
+        file="${selectable[$cursor]}"
+        submit
+    }
+    
     # if no other selections have been made add the selected into the array
     [ ${#selected[@]} -eq 0 ] && {
         selected=("${selectable[$cursor]}")
@@ -208,9 +199,45 @@ click() {
         }
     done
 
+    # select the item the cursor is on
     selected+=("${selectable[$cursor]}")
     render
 }
+
+# cursor logic
+curse() {
+    # move selection away from submit button if it was already selected
+    [ $submit == selected ] && {
+        cursor=0
+        submit=visible
+    }
+
+    # test submit button state
+    [ $submit == visible ] && {
+        [ $cursor -eq ${#selectable[@]} ] && submit=selected
+    } || {
+        [ $cursor -eq ${#selectable[@]} ] && cursor=0
+    }
+    [ $cursor -eq -1 ] && ((cursor = ${#selectable[@]} - 1))
+
+    render
+}
+
+# event handlers
+# adjusts the cursor position and adjusts snapback to prevent array index out of bounds
+up() {
+    ((cursor--))
+    curse
+}
+
+down() {
+    ((cursor++))
+    curse
+}
+
+# idk what to do with these yet
+left() { :; }
+right() { :; }
 
 # map keys
 keystroke() {
@@ -268,21 +295,39 @@ keystroke() {
     esac
 }
 
-# --- filler logic functions - replace with the options in your <select> ---
+# subfunctions
 one() {
-    p "one!"
+    body=("please select a file")
+    queue "print_file"
+    browser
 }
 
 two() {
-    p "two!!"
+    body=("two!!")
+    render
+    sleep 2
+    next
 }
 
 three() {
-    p "three!!!"
+    body=("three!!!")
+    render
+    sleep 2
+    next
 }
 
 four() {
-    p "four!!!!"
+    body=("four!!!!")
+    render
+    sleep 2
+    next
+}
+
+print_file() {
+    body=("you have selected: $file")
+    render
+    sleep 2
+    next
 }
 
 # main() function
@@ -294,22 +339,22 @@ main() {
     trap 'refresh' WINCH
     trap "stty icanon echo; printf '\033[?25h\033[2J\033[H'" EXIT INT
 
-    # set up "dom"
-    body=()
+    # init variables
     selectable=()
     selected=()
     cursor=0
+    file=""
+    flow=("home")
 
-    # set message lines
-    msgs=("hola" "como estas?")
+    # populate body content
+    body=("hola" "como estas?")
 
     # fresh start
     refresh
 
     # add some elements
     choice "one" "two" "three" "four"
-
-    submit=(visible opt)
+    submit=visible
 
     # render!
     render
