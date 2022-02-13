@@ -8,8 +8,8 @@ render() {
     # render header
     header "tui program"
     
-    # render message status line if necessary
-    [ ! "$msg" == "" ] && msg "$msg"
+    # render status messages if necessary
+    [ ${#msgs} -ne 0 ] && message
 
     # loop through body elements and write to print
     for element in "${body[@]}"; do
@@ -76,10 +76,13 @@ header() {
     for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
 }
 
-# print status message
-msg() {
-    printf '\033[1m\033[34m%s\033[m' "$1"
-    for ((i=0; i<($COLUMNS*2)-${#1}; i++)); { echo -n " "; }
+# print status message(s)
+message() {
+    for msg in "${msgs[@]}"; do
+        printf '\033[1m\033[34m%s\033[m' "$msg"
+        for ((i=0; i<$COLUMNS-${#msg}; i++)); { echo -n " "; }
+    done
+    for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
 }
 
 # add <p> to <body>
@@ -125,7 +128,7 @@ submit() {
     data=("${selected[@]}") 
 
     # change message
-    msg="submitted!"
+    msgs=("submitted!")
     
     hard_reset
 
@@ -297,7 +300,8 @@ main() {
     selected=()
     cursor=0
 
-    msg="hola"
+    # set message lines
+    msgs=("hola" "como estas?")
 
     # fresh start
     refresh
