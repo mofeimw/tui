@@ -5,16 +5,22 @@ render() {
     # escape code to clear screen
     printf '\033[2J\033[H\033[?25l'
 
-    # loop through elements and write to terminal
-    for element in "${elements[@]}"; do
+    # render header
+    header "tui program"
+    
+    # render message status line if necessary
+    [ ! "$msg" == "" ] && msg "$msg"
+
+    # loop through body elements and write to print
+    for element in "${body[@]}"; do
         echo -e "$element"
     done
 
-    # loop through <select>
+    # loop through <select>able elements and print
     for option in "${selectable[@]}"; do
         # test if the option has been selected by user
         if [[ "${selected[@]}" =~ "${option}" ]]; then
-            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[42m\033[30m%s\033[m\n' "- $option" || printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
+            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[45m\033[30m%s\033[m\n' "- $option" || printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
         else
             [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[32m%s\033[m\n' "- $option" || printf '\033[1m\033[34m%s\033[m\n' "$option"
         fi
@@ -37,15 +43,7 @@ refresh() {
     # get dimensions
     read -r LINES COLUMNS < <(stty size)
 
-    # reset elements
-    elements=()
-
-    # top banner
-    br
-    h1 "tui program"
-    br
-
-    # render to terminal
+    # rerender
     render
 }
 
@@ -58,8 +56,8 @@ hard_reset() {
     refresh
 }
 
-# <h1>
-h1() {
+# print header
+header() {
     # find z value with respect to the center point
     ((z = (COLUMNS - "${#1}") / 2 ))
 
@@ -72,29 +70,36 @@ h1() {
     # add space to compensate for odd number of columns
     [ ! $(((COLUMNS - ${#1}) % 2)) -eq 0 ] && out+=" "
 
-    # add to elements and render
-    elements+=$(printf '\033[1m\033[44m\033[30m%s\033[m' "$out")
-    render
+    # write to stdout, with top and bottom padding
+    for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
+    printf '\033[1m\033[44m\033[30m%s\033[m' "$out"
+    for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
 }
 
-# <p>
+# print status message
+msg() {
+    printf '\033[1m\033[34m%s\033[m' "$1"
+    for ((i=0; i<($COLUMNS*2)-${#1}; i++)); { echo -n " "; }
+}
+
+# add <p> to <body>
 p() {
     # adds bold blue <p> and fills the rest of the line with blank space
-    elements+=$(printf '\033[1m\033[34m%s\033[m' "$1")
-    elements+=$(for ((i=0; i<$COLUMNS-${#1}; i++)); { echo -n " "; })
+    body+=$(printf '\033[1m\033[34m%s\033[m' "$1")
+    body+=$(for ((i=0; i<$COLUMNS-${#1}; i++)); { echo -n " "; })
     render
 }
 
-# <br>
+# add <br> to body
 br() {
     # writes a full line of blank space
-    elements+=$(for ((i=0; i<$COLUMNS; i++)); { echo -n " "; })
+    body+=$(for ((i=0; i<$COLUMNS; i++)); { echo -n " "; })
     render
 }
 
-# <select>
+# construct a <select>
 choice() {
-    # constructs a <select> with the arguments provided, adding them to the selectable array
+    # loop through arguments and add to (selectable) array
     for option in "$@"; do
         selectable+=("$option")
     done
@@ -118,10 +123,13 @@ submit() {
 
     # grab submitted form data
     data=("${selected[@]}") 
+
+    # change message
+    msg="submitted!"
     
     hard_reset
 
-    # what to do with data, depending on api
+    # route flow depending on api
     [ ${submit[1]} == opt ] && { 
         for option in "${data[@]}"; do
             $option
@@ -284,18 +292,17 @@ main() {
     trap "stty icanon echo; printf '\033[?25h\033[2J\033[H'" EXIT INT
 
     # set up "dom"
-    elements=()
+    body=()
     selectable=()
     selected=()
     cursor=0
+
+    msg="hola"
 
     # fresh start
     refresh
 
     # add some elements
-    p "hola"
-    br
-
     choice "one" "two" "three" "four"
 
     submit=(visible opt)
