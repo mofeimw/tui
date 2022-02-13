@@ -235,7 +235,7 @@ down() {
     curse
 }
 
-# idk what to do with these yet
+# do stuff with left and right keys
 left() { :; }
 right() { :; }
 
@@ -298,33 +298,44 @@ keystroke() {
 # subfunctions
 one() {
     body=("please select a file")
-    queue "print_file"
+    queue uno
     browser
 }
 
+uno() {
+    body=("you selected: $file")
+    render
+    sleep 2
+    next
+}
+
 two() {
-    body=("two!!")
+    body=("II")
+    render
+    stty icanon echo
+
+    printf '\033[1m\033[34m%s\033[m' 'uhh type something: '
+    read smth
+
+    printf '\n\033[1m\033[34m%s\033[m' 'type something else: '
+    read else
+    
+    stty -icanon -echo
+    body=("you typed $smth!" "you also typed $else!")
     render
     sleep 2
     next
 }
 
 three() {
-    body=("three!!!")
+    body=("III")
     render
     sleep 2
     next
 }
 
 four() {
-    body=("four!!!!")
-    render
-    sleep 2
-    next
-}
-
-print_file() {
-    body=("you have selected: $file")
+    body=("IV")
     render
     sleep 2
     next
@@ -337,16 +348,16 @@ main() {
 
     # catch window resizes and exits
     trap 'refresh' WINCH
-    trap "stty icanon echo; printf '\033[?25h\033[2J\033[H'" EXIT INT
+    trap "stty icanon echo; printf '\033[?25h\033[2J\033[H'; exit 1" EXIT INT
 
     # init variables
     selectable=()
     selected=()
+    flow=("home")
     cursor=0
     file=""
-    flow=("home")
 
-    # populate body content
+    # push <p> to the <body>
     body=("hola" "como estas?")
 
     # fresh start
