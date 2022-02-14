@@ -15,9 +15,9 @@ render() {
     for option in "${selectable[@]}"; do
         # test if the option has been selected by user
         if [[ "${selected[@]}" =~ "${option}" ]]; then
-            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[45m\033[30m%s\033[m\n' "> $option" || printf '\033[1m\033[42m\033[30m%s\033[m\n' "$option"
+            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[41m\033[30m%s\033[m\n' "> $option" || printf '\033[1m\033[41m\033[30m%s\033[m\n' "$option"
         else
-            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[32m%s\033[m\n' "> $option" || printf '\033[1m\033[34m%s\033[m\n' "$option"
+            [ "${selectable[$cursor]}" == "$option" ] && printf '\033[1m\033[31m%s\033[m\n' "> $option" || printf '\033[1m\033[34m%s\033[m\n' "$option"
         fi
     done
 
@@ -29,7 +29,7 @@ render() {
 
     [ "$submit" == selected ] && {
         for ((i=0; i<$COLUMNS; i++)); { echo -n " "; }
-        printf '\033[1m\033[45m\033[30mdone\033[m\n'
+        printf '\033[1m\033[41m\033[30mdone\033[m\n'
     }
 }
 
@@ -91,7 +91,7 @@ choice() {
 
 # file browser
 browser() {
-    body=("please select a file")
+    body+=("please select a file")
     queue "$1"
 
     # init/reset variables
@@ -117,16 +117,16 @@ browser() {
 # allow chainable function calls
 next() {
     # set the next function
-    next=${flow[1]}
+    next=${queue[1]}
 
     # remove the first (current) index in queue
-    for f in "${flow[@]}"; do
-        [ "${flow[0]}" == "$f" ] && {
+    for q in "${queue[@]}"; do
+        [ "${queue[0]}" == "$q" ] && {
             new=()
-            for y in "${flow[@]}"; do
-                [ ! "$y" == "${flow[0]}" ] && new+=("$y")
+            for y in "${queue[@]}"; do
+                [ ! "$y" == "${queue[0]}" ] && new+=("$y")
             done
-            flow=("${new[@]}")
+            queue=("${new[@]}")
             unset new
             break
         }
@@ -136,7 +136,7 @@ next() {
 }
 
 # add to up next queue
-queue() { flow=("${flow[@]:0:1}" "$1" "${flow[@]:1}"); }
+queue() { queue=("${queue[@]:0:1}" "$1" "${queue[@]:1}"); }
 
 # submit button
 submit() {
@@ -160,7 +160,7 @@ submit() {
     # reorganizes selection and adds to queue in the correct order
     for ((i=0; i<=${#order[@]}; i++)); do
         if [[ " ${data[*]} " =~ " ${order[$i]} " ]]; then
-            flow+=("${order[$i]}")
+            queue+=("${order[$i]}")
         fi
     done
 
@@ -176,6 +176,7 @@ click() {
     [ "$submit" == fs ] && {
         file="${selectable[$cursor]}"
         submit
+        return 0
     }
     
     # if no other selections have been made add the selected into the array
@@ -302,17 +303,21 @@ keystroke() {
 
 # subfunctions
 one() {
+    reset
     browser uno
 }
 
 uno() {
+    reset
     body=("you selected: $file")
     render
+
     sleep 2
     next
 }
 
 two() {
+    reset
     body=("II")
     render
     stty icanon echo
@@ -331,21 +336,28 @@ two() {
 }
 
 three() {
+    reset
     body=("III")
     render
+
     sleep 2
     next
 }
 
 four() {
+    reset
     body=("IV")
     render
+
     sleep 2
     next
 }
 
 # main() function
 main() {
+    # get terminal dimensions
+    read -r LINES COLUMNS < <(stty size)
+
     # hide input and read keys one at a time
     stty -icanon -echo
 
@@ -356,7 +368,7 @@ main() {
     # init variables
     selectable=()
     selected=()
-    flow=("home")
+    queue=("home")
     order=("one" "two" "three" "four")
     cursor=0
     file=""
@@ -364,9 +376,6 @@ main() {
 
     # push <p> to the <body>
     body=("hola" "como estas?")
-
-    # fresh start
-    refresh
 
     # add some elements
     choice "one" "two" "three" "four"
